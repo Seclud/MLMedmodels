@@ -7,7 +7,7 @@ def process_file(filename, output_directory):
     mesh = o3d.io.read_triangle_mesh(filename)
 
     # Convert the mesh to a point cloud
-    point_cloud = mesh.sample_points_poisson_disk(number_of_points=10000)
+    point_cloud = mesh.sample_points_poisson_disk(number_of_points=3000)
 
     # Save the point cloud to a file
     base_filename = os.path.splitext(os.path.basename(filename))[0] + ".ply"
