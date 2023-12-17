@@ -1,8 +1,17 @@
+# import os
+#
+# os.environ["KERAS_BACKEND"] = "plaidml.keras.backend"
+#
+# import plaidml.keras
+#
+# plaidml.keras.install_backend()
+# unfortunately paidml is old and i need to downgrade everything to make it work, so going to use cpu
+
 from keras import layers, models
 import numpy as np
 import open3d as o3d
-import os
 import tensorflow as tf
+import os
 from sklearn.model_selection import train_test_split
 
 
@@ -15,13 +24,24 @@ def create_pointnet_model(num_points):
     x = layers.BatchNormalization()(x)
     x = layers.Conv1D(1024, 1, activation='relu')(x)
     x = layers.BatchNormalization()(x)
-    x = layers.MaxPooling1D(pool_size=num_points)(x)
 
-    x = layers.Dense(512, activation='relu')(x)
+    # Global features
+    global_features = layers.MaxPooling1D(pool_size=num_points)(x)
+    global_features = layers.Flatten()(global_features)
+
+    # Repeat the global features for each point
+    global_features = layers.RepeatVector(num_points)(global_features)
+
+    # Concatenate the global features with the original features
+    x = layers.Concatenate(axis=-1)([x, global_features])
+
+    x = layers.Conv1D(512, 1, activation='relu')(x)
     x = layers.BatchNormalization()(x)
-    x = layers.Dense(256, activation='relu')(x)
+    x = layers.Conv1D(256, 1, activation='relu')(x)
     x = layers.BatchNormalization()(x)
-    x = layers.Dense(1, activation='sigmoid')(x)
+    x = layers.Conv1D(128, 1, activation='relu')(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.Conv1D(1, 1, activation='sigmoid')(x)
 
     model = models.Model(inputs=input_points, outputs=x, name='pointnet')
 
@@ -29,12 +49,11 @@ def create_pointnet_model(num_points):
 
 
 def extract_labels(point_cloud):
-    green = [0, 255, 0]
-    red = [255, 0, 0]
+    green = [0, 1, 0]
+    red = [1, 0, 0]
 
     colors = np.asarray(point_cloud.colors)
-
-    labels = np.zeros(len(colors))
+    labels = np.zeros((len(colors), 1))
 
     labels[np.all(colors == green, axis=1)] = 1
     labels[np.all(colors == red, axis=1)] = 0
@@ -45,38 +64,39 @@ def extract_labels(point_cloud):
 def main():
     point_clouds = []
     labels = []
-    num_points = 10000
+    num_points = 3000
     print(os.listdir("Point clouds"))
     for filename in os.listdir("Point clouds"):
         filepath = os.path.join("Point clouds", filename)
-        print(f"Reading file: {filepath}")
         point_cloud = o3d.io.read_point_cloud(filepath)
         points = np.asarray(point_cloud.points)
         point_clouds.append(points)
         labels.append(extract_labels(point_cloud))
-
+    print('Read all files')
     point_clouds = np.array(point_clouds)
-    labels = np.array(labels)
+    labels = np.stack(labels, axis=0)
 
-    labels = labels[:, np.newaxis]
-
-    x_train, x_test, y_train, y_test = train_test_split(point_clouds, labels, test_size=0.2, random_state=42)
-
-    x_train = tf.convert_to_tensor(x_train, dtype=tf.float32)
-    y_train = tf.convert_to_tensor(y_train, dtype=tf.float32)
-    x_test = tf.convert_to_tensor(x_test, dtype=tf.float32)
-    y_test = tf.convert_to_tensor(y_test, dtype=tf.float32)
-
+    # Split the data into training and validation sets
+    point_clouds_train, point_clouds_val, labels_train, labels_val = train_test_split(point_clouds, labels,
+                                                                                      test_size=0.2, random_state=42)
+    # Create the PointNet model
     model = create_pointnet_model(num_points)
-
+    # Compile the model
     model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
 
-    model.fit(x_train, y_train, epochs=10)
+    print(model.summary())
+    # Train the model
+    model.fit(point_clouds_train, labels_train, validation_data=(point_clouds_val, labels_val), epochs=10)
 
-    loss, accuracy = model.evaluate(x_test, y_test)
+    loss, accuracy = model.evaluate(point_clouds_train, labels_train)
+
+    # Save the model
+    model.save('my_model.keras')
 
     print(f"Test set accuracy: {accuracy * 100}%")
 
 
+
 if __name__ == '__main__':
     main()
+
