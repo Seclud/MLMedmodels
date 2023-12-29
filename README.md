@@ -1,5 +1,5 @@
-# Main activity goes on google collab notebook
+# Основная активность на google colab
 https://colab.research.google.com/drive/1dKGRwnEAoOgisOIckEDe7PrISaPvOsrv#scrollTo=BGhRMpf5vVso
 
-local project currently used as a test playground
+локальный проект используется как тестовая площадка
 
